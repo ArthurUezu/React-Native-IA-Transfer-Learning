@@ -2,7 +2,7 @@ import { Camera } from 'expo-camera';
 import React, {useEffect, useState} from 'react';
 import * as tf from '@tensorflow/tfjs'
 import { cameraWithTensors } from '@tensorflow/tfjs-react-native';
-import { Platform, StyleSheet } from 'react-native';
+import { Button, Platform, StyleSheet } from 'react-native';
 import * as mobilenet from '@tensorflow-models/mobilenet';
 
 import { View , Text} from 'react-native';
@@ -14,19 +14,56 @@ const TensorCamera = cameraWithTensors(Camera);
 export default function App(props){
   const [tfReady, setTfReady] = useState(false)
   const [model, setModel] = useState(false)
+  
   const [displayText, setDisplayText] = useState("loading models")
-  const windowWidth = useWindowDimensions().width;
-  const windowHeight = useWindowDimensions().height;
+  const windowWidth = 224;
+  const windowHeight = 224;
+  
+  const [classNames, setClassNames] = useState(['class1', 'class2'])
+  const [class2Train, setClass2Train] = useState('class1')
+  const [classNumber, setClassNumber] = useState(-1);
+  const [trainingDataInputs,setTrainingDataInputs] = useState([])
+  const [trainingDataOutputs,setTrainingDataOutputs] = useState([])
+  const [examplesCount,setExamplesCount] = useState([0,0])
+  const [predict,setPredict] = useState(false)
+  const [gatherDataState,setGatherDataState]  = useState(0)
+  const [mobileNet, setMobileNet]  = useState(undefined);
+
   useEffect(()=>{
     let checkTf= async()=>{
       console.log("loading models")
       await tf.ready()
       console.log("tf ready loading, mobileNet")
-      const model = await mobilenet.load()
+      // const model = await mobilenet.load()
       console.log("modelnet loaded")
-      setModel(model)
+      // setModel(model)
+
+
+      let mobileNet =  await tf.loadGraphModel(
+        "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1",
+          { fromTFHub: true }
+        );
       setDisplayText("loaded Models")
-      setTfReady(true)
+
+        tf.tidy(()=>{
+            let answer = mobileNet.predict(tf.zeros([1,224,224,3]))
+            console.log('answer',answer)
+        })
+        
+        let model = tf.sequential()
+        model.add(tf.layers.dense({inputShape: [1024],units: 128, activation: 'relu'}))
+        model.add(tf.layers.dense({units: classNames.length, activation: 'softmax'}))
+        model.summary()
+        model.compile({
+          optimizer:'adam',
+          loss: (classNames.length == 2) ? 'binaryCrossentropy' : 'categoricalCrossentropy',
+          metrics: ['accuracy']
+          
+        })
+        setModel(model);
+        setMobileNet(mobileNet);
+       setTfReady(true)
+
     }
     checkTf()
   },[])
@@ -53,17 +90,16 @@ export default function App(props){
       if(!AUTORENDER) {
         updatePreview();
       }
-      const imageTensor = images.next().value;
-      const prediction = await model.classify(imageTensor);
-      const highestPropPred = prediction[0]
-      const surity = Math.round(highestPropPred.probability*100)
-      if(surity > 30){
-        setDisplayText(highestPropPred.className + " \n" + surity +"% sure" )
-      }else{
-        setDisplayText("not sure what that is" )
-
+      if(tfReady) {
+        
+        let imageTensor = images.next().value;
+        if(imageTensor) {
+          imageTensor = tf.cast( imageTensor,"float32");
+          dataGatherLoop(imageTensor);
+          predictLoop(imageTensor);
+        }
       }
-      tf.dispose([imageTensor]);
+
 
       if(!AUTORENDER) {
         gl.endFrameEXP();
@@ -73,7 +109,87 @@ export default function App(props){
 
     loop();
   }
+
+  function predictLoop(imageTensor){
+    console.log('predictLoop',predict)
+    if(!predict) return;
+    console.log('predictLoop')
+    tf.tidy(()=>{
+        let videoFrameAsTensor = imageTensor.div(255)
+        let resizedTensorFrame = tf.image.resizeBilinear(videoFrameAsTensor,[224,224],true)
+        let imageFeatures = mobileNet.predict(resizedTensorFrame.expandDims())
+        let prediction = model.predict(imageFeatures).squeeze()
+        let highestIndex = prediction.argMax().arraySync()
+        let predictionArray = prediction.arraySync()
+        setDisplayText( 'Prediction: '+ classNames[highestIndex] + ' com '+ Math.floor(predictionArray[highestIndex]*100)+'% de certeza')
+    })
+}
+
+
+  function gatherDataForClass(){
+    let classNumber = classNames.indexOf(class2Train);
+    setGatherDataState ((gatherDataState == -1) ? classNumber : -1)
+  }
+
+  function dataGatherLoop(imageTensor){
+    if(gatherDataState !== -1){
+        let imageFeatures = tf.tidy(()=>{
+            let videoFrameAsTensor = imageTensor
+
+            let resizedTensorFrame = tf.image.resizeBilinear(videoFrameAsTensor,[224,224],true)
+            let normalizedTensorFrame = resizedTensorFrame.div(255)
+            
+            return mobileNet.predict(normalizedTensorFrame.expandDims()).squeeze();
+        })
+        let exCount = examplesCount;
+        console.log('exCount',exCount)
+
+        if(exCount[0] <= 50) {
+          setTrainingDataInputs([...trainingDataInputs,imageFeatures])
+          setTrainingDataOutputs([...trainingDataOutputs,0])
+          exCount[0]++
+          
+        } else if(exCount[1] <= 50) {
+          setTrainingDataInputs([...trainingDataInputs,imageFeatures])
+          setTrainingDataOutputs([...trainingDataOutputs,1])
+          exCount[1]++
+
+        } else return;
+
+        // if(exCount[gatherDataState] === undefined){
+
+        //   exCount[gatherDataState] = 0
+        // }
+        console.log('gatherDataState',gatherDataState)
+
+        setExamplesCount(exCount);
+        setDisplayText('')
+        for(let classIndex = 0;classIndex <  classNames.length;classIndex++){
+          setDisplayText(classNames[classIndex]+ ' data count: '+examplesCount[classIndex]+'.');
+        
+        }
+        // requestAnimationFrame(dataGatherLoop);
+    }
+
+  }
+  async function trainAndPredict(){
+    setPredict(false)
+    tf.util.shuffleCombo(trainingDataInputs,trainingDataOutputs)
+    let outputAsTensor = tf.tensor1d(trainingDataOutputs, 'int32')
+    let oneHotOutputs = tf.oneHot(outputAsTensor,classNames.length)
+    let inputAsTensor = tf.stack(trainingDataInputs)
+    console.log('model',model)
+    let results = await model.fit(inputAsTensor,oneHotOutputs,{shuffle: true, batchSize: 5, epochs: 10, callbacks: {onEpochEnd:logProgress}})
+    outputAsTensor.dispose()
+    oneHotOutputs.dispose()
+    inputAsTensor.dispose()
+    setPredict(true)
+  }
+
   
+  function logProgress(epoch,log){
+    console.log('data for epoch '+epoch, log)
+}
     // Currently expo does not support automatically determining the
     // resolution of the camera texture used. So it must be determined
     // empirically for the supported devices and preview size.
@@ -93,7 +209,7 @@ export default function App(props){
 
     return (
       <View style={styles.container}>
-              <Text style={{height: windowHeight*0.1}}>{displayText}</Text>
+              <Text style={{height: windowHeight*0.1}}>{displayText}, {class2Train}</Text>
 
         {tfReady  ? (<TensorCamera
           // Standard Camera props
@@ -106,12 +222,22 @@ export default function App(props){
           // Tensor related props
           cameraTextureHeight={textureDims.height}
           cameraTextureWidth={textureDims.width}
-          resizeHeight={200}
-          resizeWidth={152}
+          resizeHeight={224}
+          resizeWidth={224}
           resizeDepth={3}
           onReady={handleCameraStream}
           autorender={AUTORENDER}
         />) : <View/>}
+        <View style={{
+          flexDirection: 'row'
+        }}>
+          <Button onPress={()=>{setClass2Train('class1');setGatherDataState(0)}} title="Classe 1"></Button>
+          <Button onPress={()=>{setClass2Train('class2');setGatherDataState(1)}} title="Classe 2"></Button>
+          <Button onPress={()=>{setGatherDataState(-1)}} title="Parar"></Button>
+
+          <Button onPress={()=>{trainAndPredict()}} title="Treinar e classificar"></Button>
+          <Button onPress={()=>{}} title="Reset"></Button>
+        </View>
       </View>
     );
 }
