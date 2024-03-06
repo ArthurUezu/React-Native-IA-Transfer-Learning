@@ -2,13 +2,14 @@ import { Camera } from 'expo-camera';
 import React, {useEffect, useState} from 'react';
 import * as tf from '@tensorflow/tfjs'
 import { cameraWithTensors } from '@tensorflow/tfjs-react-native';
-import { Button, Platform, StyleSheet } from 'react-native';
+import { Button, Image, Platform, StyleSheet, TouchableOpacity } from 'react-native';
 import * as mobilenet from '@tensorflow-models/mobilenet';
-
+import { fetch, bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native'
+import * as ImagePicker from 'expo-image-picker';
 import { View , Text} from 'react-native';
 import { setdiff1dAsync } from '@tensorflow/tfjs';
 import {useWindowDimensions} from 'react-native';
-
+import * as FileSystem from 'expo-file-system';
 const TensorCamera = cameraWithTensors(Camera);
 
 export default function App(props){
@@ -18,7 +19,7 @@ export default function App(props){
   const [displayText, setDisplayText] = useState("loading models")
   const windowWidth = 224;
   const windowHeight = 224;
-  
+  const [image, setImage] = useState(null);
   const [classNames, setClassNames] = useState(['class1', 'class2'])
   const [class2Train, setClass2Train] = useState('class1')
   const [classNumber, setClassNumber] = useState(-1);
@@ -37,7 +38,6 @@ export default function App(props){
       // const model = await mobilenet.load()
       console.log("modelnet loaded")
       // setModel(model)
-
 
       let mobileNet =  await tf.loadGraphModel(
         "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1",
@@ -95,7 +95,9 @@ export default function App(props){
         let imageTensor = images.next().value;
         if(imageTensor) {
           imageTensor = tf.cast( imageTensor,"float32");
-          dataGatherLoop(imageTensor);
+          if(!predict) {
+            // dataGatherLoop(imageTensor);
+          }
           predictLoop(imageTensor);
         }
       }
@@ -126,9 +128,9 @@ export default function App(props){
 }
 
 
-  function gatherDataForClass(){
-    let classNumber = classNames.indexOf(class2Train);
+  function gatherDataForClass(classNumber){
     setGatherDataState ((gatherDataState == -1) ? classNumber : -1)
+
   }
 
   function dataGatherLoop(imageTensor){
@@ -144,17 +146,10 @@ export default function App(props){
         let exCount = examplesCount;
         console.log('exCount',exCount)
 
-        if(exCount[0] <= 50) {
-          setTrainingDataInputs([...trainingDataInputs,imageFeatures])
-          setTrainingDataOutputs([...trainingDataOutputs,0])
-          exCount[0]++
+        setTrainingDataInputs([...trainingDataInputs,imageFeatures])
+        setTrainingDataOutputs([...trainingDataOutputs,classNames.indexOf(class2Train)])
+        exCount[classNames.indexOf(class2Train)]++
           
-        } else if(exCount[1] <= 50) {
-          setTrainingDataInputs([...trainingDataInputs,imageFeatures])
-          setTrainingDataOutputs([...trainingDataOutputs,1])
-          exCount[1]++
-
-        } else return;
 
         // if(exCount[gatherDataState] === undefined){
 
@@ -207,11 +202,37 @@ export default function App(props){
       };
     }
 
+    const pickImage = async () => {
+      // No permissions request is necessary for launching the image library
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+  
+      console.log(result);
+  
+      if (!result.canceled) {
+        setImage(result.assets[0].uri);
+        const fileUri = result.assets[0].uri;      
+        const imgB64 = await FileSystem.readAsStringAsync(fileUri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const imgBuffer = tf.util.encodeString(imgB64, 'base64').buffer;
+        const raw = new Uint8Array(imgBuffer)  
+        const imageTensor = decodeJpeg(raw);
+        console.log('trained')
+        dataGatherLoop(imageTensor);
+        console.log('trained2')
+      }
+    };
+
     return (
       <View style={styles.container}>
               <Text style={{height: windowHeight*0.1}}>{displayText}, {class2Train}</Text>
 
-        {tfReady  ? (<TensorCamera
+        {tfReady && predict ? (<TensorCamera
           // Standard Camera props
           style={{
             zIndex: -10,
@@ -227,12 +248,16 @@ export default function App(props){
           resizeDepth={3}
           onReady={handleCameraStream}
           autorender={AUTORENDER}
-        />) : <View/>}
+        />) : <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+      <Button title="Pick an image from camera roll" onPress={pickImage} />
+      {image && <Image source={{ uri: image }} style={{ width: 200, height: 200 }} />}
+    </View>}
+      
         <View style={{
           flexDirection: 'row'
         }}>
-          <Button onPress={()=>{setClass2Train('class1');setGatherDataState(0)}} title="Classe 1"></Button>
-          <Button onPress={()=>{setClass2Train('class2');setGatherDataState(1)}} title="Classe 2"></Button>
+          <Button onPress={()=>{setClass2Train('class1'); gatherDataForClass(0)}} title="Classe 1"></Button>
+          <Button onPress={()=>{setClass2Train('class2'); gatherDataForClass(1)}} title="Classe 2"></Button>
           <Button onPress={()=>{setGatherDataState(-1)}} title="Parar"></Button>
 
           <Button onPress={()=>{trainAndPredict()}} title="Treinar e classificar"></Button>
