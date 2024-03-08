@@ -6,6 +6,7 @@ import { Button, Image, Platform, StyleSheet, TouchableOpacity } from 'react-nat
 import * as mobilenet from '@tensorflow-models/mobilenet';
 import { fetch, bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native'
 import * as ImagePicker from 'expo-image-picker';
+import { ImageBrowser } from 'expo-image-picker-multiple';
 import { View , Text} from 'react-native';
 import { setdiff1dAsync } from '@tensorflow/tfjs';
 import {useWindowDimensions} from 'react-native';
@@ -250,6 +251,7 @@ export default function App(props){
           autorender={AUTORENDER}
         />) : <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
       <Button title="Pick an image from camera roll" onPress={pickImage} />
+      
       {image && <Image source={{ uri: image }} style={{ width: 200, height: 200 }} />}
     </View>}
       
