@@ -6,7 +6,7 @@ import { Button, Image, Platform, StyleSheet, TouchableOpacity } from 'react-nat
 import * as mobilenet from '@tensorflow-models/mobilenet';
 import { fetch, bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native'
 import * as ImagePicker from 'expo-image-picker';
-import { ImageBrowser } from 'expo-image-picker-multiple';
+import { manipulateAsync, FlipType, SaveFormat } from 'expo-image-manipulator'; 
 import { View , Text} from 'react-native';
 import { setdiff1dAsync } from '@tensorflow/tfjs';
 import {useWindowDimensions} from 'react-native';
@@ -16,6 +16,7 @@ const TensorCamera = cameraWithTensors(Camera);
 export default function App(props){
   const [tfReady, setTfReady] = useState(false)
   const [model, setModel] = useState(false)
+  const [loading, setLoading] = useState(false)
   
   const [displayText, setDisplayText] = useState("loading models")
   const windowWidth = 224;
@@ -33,11 +34,9 @@ export default function App(props){
 
   useEffect(()=>{
     let checkTf= async()=>{
-      console.log("loading models")
+      setDisplayText('Aguarde')
       await tf.ready()
-      console.log("tf ready loading, mobileNet")
       // const model = await mobilenet.load()
-      console.log("modelnet loaded")
       // setModel(model)
 
       let mobileNet =  await tf.loadGraphModel(
@@ -48,7 +47,6 @@ export default function App(props){
 
         tf.tidy(()=>{
             let answer = mobileNet.predict(tf.zeros([1,224,224,3]))
-            console.log('answer',answer)
         })
         
         let model = tf.sequential()
@@ -64,6 +62,7 @@ export default function App(props){
         setModel(model);
         setMobileNet(mobileNet);
        setTfReady(true)
+       setDisplayText('Carregado!!!')
 
     }
     checkTf()
@@ -114,9 +113,7 @@ export default function App(props){
   }
 
   function predictLoop(imageTensor){
-    console.log('predictLoop',predict)
     if(!predict) return;
-    console.log('predictLoop')
     tf.tidy(()=>{
         let videoFrameAsTensor = imageTensor.div(255)
         let resizedTensorFrame = tf.image.resizeBilinear(videoFrameAsTensor,[224,224],true)
@@ -135,37 +132,28 @@ export default function App(props){
   }
 
   function dataGatherLoop(imageTensor){
-    if(gatherDataState !== -1){
-        let imageFeatures = tf.tidy(()=>{
-            let videoFrameAsTensor = imageTensor
+    if(!imageTensor) return;
+      const classIndex = classNames.indexOf(class2Train);
+      let imageFeatures = tf.tidy(()=>{
+          let videoFrameAsTensor = imageTensor
 
-            let resizedTensorFrame = tf.image.resizeBilinear(videoFrameAsTensor,[224,224],true)
-            let normalizedTensorFrame = resizedTensorFrame.div(255)
-            
-            return mobileNet.predict(normalizedTensorFrame.expandDims()).squeeze();
-        })
-        let exCount = examplesCount;
-        console.log('exCount',exCount)
-
-        setTrainingDataInputs([...trainingDataInputs,imageFeatures])
-        setTrainingDataOutputs([...trainingDataOutputs,classNames.indexOf(class2Train)])
-        exCount[classNames.indexOf(class2Train)]++
+          let resizedTensorFrame = tf.image.resizeBilinear(videoFrameAsTensor,[224,224],true)
+          let normalizedTensorFrame = resizedTensorFrame.div(255)
           
-
-        // if(exCount[gatherDataState] === undefined){
-
-        //   exCount[gatherDataState] = 0
-        // }
-        console.log('gatherDataState',gatherDataState)
-
-        setExamplesCount(exCount);
-        setDisplayText('')
-        for(let classIndex = 0;classIndex <  classNames.length;classIndex++){
-          setDisplayText(classNames[classIndex]+ ' data count: '+examplesCount[classIndex]+'.');
+          return mobileNet.predict(normalizedTensorFrame.expandDims()).squeeze();
+      })
+      let exCount = examplesCount;
+      
+      setTrainingDataInputs(prevState => [...prevState,imageFeatures])
+      setTrainingDataOutputs(prevState => [...prevState,classIndex])
+      exCount[classIndex]++
         
-        }
-        // requestAnimationFrame(dataGatherLoop);
-    }
+
+      setExamplesCount(exCount);
+      setDisplayText('')
+      setDisplayText(classNames[classNames.indexOf(class2Train)]+ ' data count: '+examplesCount[classNames.indexOf(class2Train)]+'.');
+      
+      // requestAnimationFrame(dataGatherLoop);
 
   }
   async function trainAndPredict(){
@@ -174,7 +162,6 @@ export default function App(props){
     let outputAsTensor = tf.tensor1d(trainingDataOutputs, 'int32')
     let oneHotOutputs = tf.oneHot(outputAsTensor,classNames.length)
     let inputAsTensor = tf.stack(trainingDataInputs)
-    console.log('model',model)
     let results = await model.fit(inputAsTensor,oneHotOutputs,{shuffle: true, batchSize: 5, epochs: 10, callbacks: {onEpochEnd:logProgress}})
     outputAsTensor.dispose()
     oneHotOutputs.dispose()
@@ -184,7 +171,6 @@ export default function App(props){
 
   
   function logProgress(epoch,log){
-    console.log('data for epoch '+epoch, log)
 }
     // Currently expo does not support automatically determining the
     // resolution of the camera texture used. So it must be determined
@@ -207,32 +193,49 @@ export default function App(props){
       // No permissions request is necessary for launching the image library
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.All,
-        allowsEditing: true,
-        aspect: [4, 3],
+        aspect: [1, 1],
         quality: 1,
+        allowsMultipleSelection: true,
       });
   
-      console.log(result);
   
       if (!result.canceled) {
-        setImage(result.assets[0].uri);
-        const fileUri = result.assets[0].uri;      
-        const imgB64 = await FileSystem.readAsStringAsync(fileUri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const imgBuffer = tf.util.encodeString(imgB64, 'base64').buffer;
-        const raw = new Uint8Array(imgBuffer)  
-        const imageTensor = decodeJpeg(raw);
-        console.log('trained')
-        dataGatherLoop(imageTensor);
-        console.log('trained2')
+        setLoading(true);
+        for(let asset of result.assets) {
+
+          const resizeAction = {
+            resize: {
+              width: 224, // defined as 178 in my project
+              height: 224, // defined as 220 in my project
+            },
+          };
+          const manipResult = await manipulateAsync(
+            asset.uri,
+            [resizeAction],
+            {
+              compress: 0.8,
+              format: SaveFormat.JPEG,
+              base64: true,
+            },
+          );
+          const imgB64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          setImage(manipResult.uri);
+
+          const imgBuffer = tf.util.encodeString(imgB64, 'base64').buffer;
+          const raw = new Uint8Array(imgBuffer)  
+          const imageTensor = decodeJpeg(raw);
+          dataGatherLoop(imageTensor);
+        }
+        setLoading(false);
       }
     };
 
     return (
       <View style={styles.container}>
-              <Text style={{height: windowHeight*0.1}}>{displayText}, {class2Train}</Text>
-
+              <Text style={{height: windowHeight*0.1}}>{displayText}, {class2Train},{loading ? 'Carregando' : ''}</Text>
+        
         {tfReady && predict ? (<TensorCamera
           // Standard Camera props
           style={{
@@ -258,8 +261,8 @@ export default function App(props){
         <View style={{
           flexDirection: 'row'
         }}>
-          <Button onPress={()=>{setClass2Train('class1'); gatherDataForClass(0)}} title="Classe 1"></Button>
-          <Button onPress={()=>{setClass2Train('class2'); gatherDataForClass(1)}} title="Classe 2"></Button>
+          <Button onPress={()=>{setClass2Train('class1');}} title="Classe 1"></Button>
+          <Button onPress={()=>{setClass2Train('class2');}} title="Classe 2"></Button>
           <Button onPress={()=>{setGatherDataState(-1)}} title="Parar"></Button>
 
           <Button onPress={()=>{trainAndPredict()}} title="Treinar e classificar"></Button>
