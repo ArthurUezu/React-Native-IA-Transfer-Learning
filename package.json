@@ -6,13 +6,16 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "postinstall": "node_modules/.bin/rn-nodeify --install crypto,path,util,stream,fs,events,https --hack"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "1.21.0",
     "@tensorflow-models/mobilenet": "^2.1.1",
     "@tensorflow/tfjs": "^4.17.0",
     "@tensorflow/tfjs-react-native": "^1.0.0",
+    "asyncstorage-down": "^4.2.0",
+    "events": "^1.0.0",
     "expo": "^50.0.0",
     "expo-camera": "~14.0.5",
     "expo-file-system": "~16.0.7",
@@ -20,14 +23,48 @@
     "expo-image-manipulator": "~11.8.0",
     "expo-image-picker": "~14.7.1",
     "expo-status-bar": "~1.11.1",
+    "https-browserify": "~0.0.0",
     "install-expo-modules": "^0.8.1",
+    "path-browserify": "0.0.0",
     "react": "18.2.0",
     "react-native": "0.73.4",
     "react-native-async-storage": "^0.0.1",
-    "react-native-fs": "^2.20.0"
+    "react-native-crypto": "^2.1.0",
+    "react-native-fs": "^2.20.0",
+    "react-native-level-fs": "^3.0.0",
+    "react-native-randombytes": "^3.0.0",
+    "readable-stream": "1.0.33",
+    "rn-nodeify": "^10.3.0",
+    "stream-browserify": "^1.0.0",
+    "tfjs-cifar10": "^1.1.1",
+    "util": "~0.10.3"
   },
   "devDependencies": {
     "@babel/core": "^7.20.0"
   },
-  "private": true
+  "private": true,
+  "react-native": {
+    "crypto": "react-native-crypto",
+    "https": "https-browserify",
+    "fs": "react-native-level-fs",
+    "path": "path-browserify",
+    "_stream_transform": "readable-stream/transform",
+    "_stream_readable": "readable-stream/readable",
+    "_stream_writable": "readable-stream/writable",
+    "_stream_duplex": "readable-stream/duplex",
+    "_stream_passthrough": "readable-stream/passthrough",
+    "stream": "stream-browserify"
+  },
+  "browser": {
+    "crypto": "react-native-crypto",
+    "https": "https-browserify",
+    "fs": "react-native-level-fs",
+    "path": "path-browserify",
+    "_stream_transform": "readable-stream/transform",
+    "_stream_readable": "readable-stream/readable",
+    "_stream_writable": "readable-stream/writable",
+    "_stream_duplex": "readable-stream/duplex",
+    "_stream_passthrough": "readable-stream/passthrough",
+    "stream": "stream-browserify"
+  }
 }

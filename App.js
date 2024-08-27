@@ -11,6 +11,7 @@ import { View, Text } from 'react-native';
 import { setdiff1dAsync } from '@tensorflow/tfjs';
 import { useWindowDimensions } from 'react-native';
 import * as FileSystem from 'expo-file-system';
+import { Cifar10 } from 'tfjs-cifar10';
 const TensorCamera = cameraWithTensors(Camera);
 
 export default function App(props) {
@@ -35,9 +36,16 @@ export default function App(props) {
     'mobilenet': "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1"
   }
 
-
   async function setupModel(modelName) {
     setDisplayText('Aguarde')
+    const data = new Cifar10()
+    await data.load()
+
+    const {trainX, trainY} = data.nextTrainBatch(100)
+    const {testX, testY} = data.nextTestBatch(1500)
+    console.log(trainX, trainY, testX, testY)
+    
+    const {X, Y} = data.nextTrainBatch() 
     await tf.ready()
     let mobileNet = await tf.loadGraphModel(
       MODELS[modelName],
