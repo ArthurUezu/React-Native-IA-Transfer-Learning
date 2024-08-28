@@ -68,26 +68,45 @@ export default function App(props) {
     setMobileNet(mobileNet);
     setTfReady(true)
     setDisplayText('Carregado!!!')
-    const trainLabels = require('./cifar/train_lables.json');
+    // const trainLabels = require('./cifar/train_lables.json');
     let classIndex = 0;
     // for(let i = 1; i<=2; i++) {
-    const image = Asset.fromModule(require('./cifar/data_batch_1.png'));
-    await image.downloadAsync();
-    for(let height = 0; height < 256; height += 32) {
-      if(stop) break;
-      console.log('linha', classIndex);
-      for(let width = 0; width < 1024; width += 32) {
-        if(stop) break;;
-        // setClass2Train(trainLabels[classIndex]);
-        classIndex++;
+    const trainClassesMap = [
+      'airplane',
+      'automobile',
+      'bird',
+      'cat',
+      'deer',
+      'dog',
+      'frog',
+      'horse',
+      'ship',
+      'truck',
+    ]
+    const trainClassesRequireMap = [
+      require('./dataset/train/airplane/require'),
+      require('./dataset/train/automobile/require'),
+      // require('./dataset/train/bird/require'),
+      // require('./dataset/train/cat/require'),
+      // require('./dataset/train/deer/require'),
+      // require('./dataset/train/dog/require'),
+      // require('./dataset/train/frog/require'),
+      // require('./dataset/train/horse/require'),
+      // require('./dataset/train/ship/require'),
+      // require('./dataset/train/truck/require'),
+    ]
+    for(let i=0; i<2; i++) {
+      console.log('trainClassesMap[i]', trainClassesMap[i]);
+
+
+      for(let j = 1; j<50; j++) {
+        console.log('trainClassesRequireMap', trainClassesRequireMap[i].getRequireURL(50)[''+j])
+        const image = Asset.fromModule(trainClassesRequireMap[i].getRequireURL(50)[''+j]);
+        await image.downloadAsync();
+
         let manipResult =  await manipulateAsync(
           image.localUri || image.uri,
-          [ { crop: {
-            height: 32, 
-            originX: width, 
-            originY: height, 
-            width: 32
-          } }, { resize: {
+          [ { resize: {
             width: 224, // defined as 178 in my project
             height: 224, // defined as 220 in my project
           },}],
@@ -100,10 +119,8 @@ export default function App(props) {
         const imgBuffer = tf.util.encodeString(imgB64, 'base64').buffer;
         const raw = new Uint8Array(imgBuffer)
         const imageTensor = decodeJpeg(raw);
-        // console.log(imageTensor)
-        dataGatherLoop(imageTensor, trainLabels[classIndex]);
+        dataGatherLoop(imageTensor, i);
       }
-      // }
     }
     console.log('inicio treinamento');
     trainAndPredict()
