@@ -1,5 +1,4 @@
-const tf = __non_webpack_require__('@tensorflow/tfjs')
-
+import * as tf from '@tensorflow/tfjs'
 export class DataSet {
   IMG_WIDTH = 32
   IMG_HEIGHT = 32

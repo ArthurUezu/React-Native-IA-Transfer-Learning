@@ -6,27 +6,30 @@ import { Button, Image, Platform, StyleSheet, TouchableOpacity } from 'react-nat
 import * as mobilenet from '@tensorflow-models/mobilenet';
 import { fetch, bundleResourceIO, decodeJpeg } from '@tensorflow/tfjs-react-native'
 import * as ImagePicker from 'expo-image-picker';
-import { manipulateAsync, FlipType, SaveFormat } from 'expo-image-manipulator';
+import { manipulateAsync, FlipType, SaveFormat, ActionCrop } from 'expo-image-manipulator';
 import { View, Text } from 'react-native';
 import { setdiff1dAsync } from '@tensorflow/tfjs';
 import { useWindowDimensions } from 'react-native';
 import * as FileSystem from 'expo-file-system';
+import { Asset } from 'expo-asset';
+
 const TensorCamera = cameraWithTensors(Camera);
 
 export default function App(props) {
   const [tfReady, setTfReady] = useState(false)
   const [model, setModel] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [stop, setStop] = useState(false)
 
   const [displayText, setDisplayText] = useState("loading models")
   const windowWidth = 224;
   const windowHeight = 224;
   const [image, setImage] = useState(null);
-  const [classNames, setClassNames] = useState(['class1', 'class2', 'class3']);
-  const [class2Train, setClass2Train] = useState('class1')
+  const [classNames, setClassNames] = useState([0,1,2,3,4,5,6,7,8,9]);
+  const [class2Train, setClass2Train] = useState(0)
   const [trainingDataInputs, setTrainingDataInputs] = useState([])
   const [trainingDataOutputs, setTrainingDataOutputs] = useState([])
-  const [examplesCount, setExamplesCount] = useState([0, 0])
+  const [examplesCount, setExamplesCount] = useState([0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
   const [predict, setPredict] = useState(false)
   const [gatherDataState, setGatherDataState] = useState(0)
   const [mobileNet, setMobileNet] = useState(undefined);
@@ -35,8 +38,9 @@ export default function App(props) {
     'mobilenet': "https://tfhub.dev/google/tfjs-model/imagenet/mobilenet_v3_small_100_224/feature_vector/5/default/1"
   }
 
-
   async function setupModel(modelName) {
+    // const cifar1 = nodePickle.loads('./dataset/data_batch_1');
+    
     setDisplayText('Aguarde')
     await tf.ready()
     let mobileNet = await tf.loadGraphModel(
@@ -47,6 +51,7 @@ export default function App(props) {
 
     tf.tidy(() => {
       let answer = mobileNet.predict(tf.zeros([1, 224, 224, 3]))
+      console.log(answer)
     })
 
     let model = tf.sequential()
@@ -63,7 +68,45 @@ export default function App(props) {
     setMobileNet(mobileNet);
     setTfReady(true)
     setDisplayText('Carregado!!!')
+    const trainLabels = require('./cifar/train_lables.json');
+    let classIndex = 0;
+    // for(let i = 1; i<=2; i++) {
+    const image = Asset.fromModule(require('./cifar/data_batch_1.png'));
+    await image.downloadAsync();
+    for(let height = 0; height < 256; height += 32) {
+      if(stop) break;
+      console.log('linha', classIndex);
+      for(let width = 0; width < 1024; width += 32) {
+        if(stop) break;;
+        // setClass2Train(trainLabels[classIndex]);
+        classIndex++;
+        let manipResult =  await manipulateAsync(
+          image.localUri || image.uri,
+          [ { crop: {
+            height: 32, 
+            originX: width, 
+            originY: height, 
+            width: 32
+          } }, { resize: {
+            width: 224, // defined as 178 in my project
+            height: 224, // defined as 220 in my project
+          },}],
+          { compress: 1, format: SaveFormat.JPEG,base64: true, }
+        );
+        const imgB64 = await FileSystem.readAsStringAsync(manipResult.uri, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
 
+        const imgBuffer = tf.util.encodeString(imgB64, 'base64').buffer;
+        const raw = new Uint8Array(imgBuffer)
+        const imageTensor = decodeJpeg(raw);
+        // console.log(imageTensor)
+        dataGatherLoop(imageTensor, trainLabels[classIndex]);
+      }
+      // }
+    }
+    console.log('inicio treinamento');
+    trainAndPredict()
   }
 
   useEffect(() => {
@@ -130,9 +173,9 @@ export default function App(props) {
     })
   }
 
-  function dataGatherLoop(imageTensor) {
+  function dataGatherLoop(imageTensor, class2Train) {
     if (!imageTensor) return;
-    const classIndex = classNames.indexOf(class2Train);
+    // const classIndex = classNames.indexOf(class2Train);
     let imageFeatures = tf.tidy(() => {
       let videoFrameAsTensor = imageTensor
 
@@ -144,12 +187,12 @@ export default function App(props) {
     let exCount = examplesCount;
 
     setTrainingDataInputs(prevState => [...prevState, imageFeatures])
-    setTrainingDataOutputs(prevState => [...prevState, classIndex])
-    exCount[classIndex]++
+    setTrainingDataOutputs(prevState => [...prevState, class2Train])
+    exCount[class2Train]++;
 
-    setExamplesCount(exCount);
-    setDisplayText('')
-    setDisplayText(classNames[classNames.indexOf(class2Train)] + ' data count: ' + examplesCount[classNames.indexOf(class2Train)] + '.');
+    // setExamplesCount(exCount);
+    // setDisplayText('')
+    // setDisplayText(classNames[classNames.indexOf(class2Train)] + ' data count: ' + examplesCount[classNames.indexOf(class2Train)] + '.');
 
     // requestAnimationFrame(dataGatherLoop);
 
@@ -164,6 +207,7 @@ export default function App(props) {
     outputAsTensor.dispose()
     oneHotOutputs.dispose()
     inputAsTensor.dispose()
+    // await model.save('file:///');
     setPredict(true)
   }
 
@@ -222,7 +266,7 @@ export default function App(props) {
         setImage(manipResult.uri);
 
         const imgBuffer = tf.util.encodeString(imgB64, 'base64').buffer;
-        const raw = new Uint8Array(imgBuffer)
+        const raw = new Uint8Array(imgBuffer);
         const imageTensor = decodeJpeg(raw);
         dataGatherLoop(imageTensor);
       }
@@ -230,9 +274,10 @@ export default function App(props) {
     }
   };
 
+  // <Text style={{ height: windowHeight * 0.1 }}>{displayText}, {class2Train},{loading ? 'Carregando' : ''}</Text>
   return (
     <View style={styles.container}>
-      <Text style={{ height: windowHeight * 0.1 }}>{displayText}, {class2Train},{loading ? 'Carregando' : ''}</Text>
+      <Text style={{ height: windowHeight * 0.1 }}>{displayText}, ,{loading ? 'Carregando' : ''}</Text>
 
       {tfReady && predict ? (<TensorCamera
         // Standard Camera props
@@ -260,12 +305,12 @@ export default function App(props) {
         flexDirection: 'row'
       }}>
         <Button onPress={() => { setClass2Train('class1'); }} title="Classe 1"></Button>
-        <Button onPress={() => { setClass2Train('class2'); }} title="Classe 2"></Button>
-        <Button onPress={() => { setClass2Train('class3'); }} title="Classe 3"></Button>
+        {/* <Button onPress={() => { setClass2Train('class2'); }} title="Classe 2"></Button> */}
+        {/* <Button onPress={() => { setClass2Train('class3'); }} title="Classe 3"></Button> */}
         <Button onPress={() => { setGatherDataState(-1) }} title="Parar"></Button>
 
         <Button onPress={() => { trainAndPredict() }} title="Treinar e classificar"></Button>
-        <Button onPress={() => { }} title="Reset"></Button>
+        <Button onPress={() => { setStop(true) }} title="Reset"></Button>
       </View>
     </View>
   );

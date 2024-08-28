@@ -1,9 +1,10 @@
 import { DataSet } from './base'
 
-import fs from 'fs'
+import fs from 'react-native-fs'
 import path from 'path'
-const { Image, createCanvas } = __non_webpack_require__('canvas')
-const tf = __non_webpack_require__('@tensorflow/tfjs')
+import { Image } from 'react-native'
+// const { Image, createCanvas } = __non_webpack_require__('canvas')
+import * as tf from '@tensorflow/tfjs'
 
 export class Cifar10 extends DataSet {
   TRAIN_IMAGES = [
@@ -67,8 +68,8 @@ export class Cifar10 extends DataSet {
     this.trainDatas = await this.loadImages(this.TRAIN_IMAGES)
     this.testDatas = await this.loadImages(this.TEST_IMAGES)
 
-    this.trainLables = await JSON.parse(fs.readFileSync(this.getPath(this.TRAIN_LABLES), 'utf8'))
-    this.testLables = await JSON.parse(fs.readFileSync(this.getPath(this.TEST_LABLES), 'utf8'))
+    this.trainLables = await JSON.parse(this.TRAIN_LABLES, 'utf8')
+    this.testLables = await JSON.parse(this.TEST_LABLES, 'utf8')
 
     this.trainM = this.trainLables.length
     this.testM = this.testLables.length

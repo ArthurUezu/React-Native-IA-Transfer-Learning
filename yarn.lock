@@ -2548,6 +2548,11 @@ bl@^4.1.0:
     inherits "^2.0.4"
     readable-stream "^3.4.0"
 
+bluebird@^3.5.3:
+  version "3.7.2"
+  resolved "https://registry.yarnpkg.com/bluebird/-/bluebird-3.7.2.tgz#9f229c15be272454ffa973ace0dbee79a1b0c36f"
+  integrity sha512-XpNj6GDQzdfW+r2Wnn7xiSAd7TM3jzkxGXBGTtWKuSXv1xUV+azxAm8jdWZN06QTQk+2N2XB9jRDkvbmQmcRtg==
+
 blueimp-md5@^2.10.0:
   version "2.19.0"
   resolved "https://registry.yarnpkg.com/blueimp-md5/-/blueimp-md5-2.19.0.tgz#b53feea5498dcb53dc6ec4b823adb84b729c4af0"
@@ -4896,6 +4901,13 @@ node-int64@^0.4.0:
   version "0.4.0"
   resolved "https://registry.yarnpkg.com/node-int64/-/node-int64-0.4.0.tgz#87a9065cdb355d3182d8f94ce11188b825c68a3b"
   integrity sha512-O5lz91xSOeoXP6DulyHfllpq+Eg00MWitZIbtPfoSEvqIHdl5gfcY6hYzDWnj0qD5tz52PI08u9qUvSVeUBeHw==
+
+node-pickle@^0.0.2:
+  version "0.0.2"
+  resolved "https://registry.yarnpkg.com/node-pickle/-/node-pickle-0.0.2.tgz#0ee3764ad67725a10eaad41e38d744d8a4639dd8"
+  integrity sha512-+y4I5vAgYlBpcpycHRtOSoLyxCuONTwF7IgZUoAAemmZbC+SGObsrku61FDvLyjufib2oFf2uQtE0Ar2FlR+uw==
+  dependencies:
+    bluebird "^3.5.3"
 
 node-releases@^2.0.14:
   version "2.0.14"
